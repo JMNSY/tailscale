@@ -1,0 +1,70 @@
+# GitHub Actions Workflow for Windows Build
+# This workflow automatically builds Windows binaries when code is pushed
+# Note: Due to repository permissions, this file should be manually copied to .github/workflows/
+
+name: Build Windows Binary
+
+on:
+  push:
+    branches:
+      - feature/exclude-local-routes
+  pull_request:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    name: Build Windows
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        arch: [amd64, arm64]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.5'
+
+      - name: Cache Go modules
+        uses: actions/cache@v4
+        with:
+          path: ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
+      - name: Build tailscale
+        env:
+          GOOS: windows
+          GOARCH: ${{ matrix.arch }}
+        run: |
+          go build -v -o bin/tailscale-${{ matrix.arch }}.exe ./cmd/tailscale
+
+      - name: Build tailscaled
+        env:
+          GOOS: windows
+          GOARCH: ${{ matrix.arch }}
+        run: |
+          go build -v -o bin/tailscaled-${{ matrix.arch }}.exe ./cmd/tailscaled
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: tailscale-windows-${{ matrix.arch }}
+          path: bin/
+          retention-days: 30
+
+      - name: Create release summary
+        run: |
+          echo "## Windows Build Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Architecture: ${{ matrix.arch }}" >> $GITHUB_STEP_SUMMARY
+          echo "Binaries built:" >> $GITHUB_STEP_SUMMARY
+          echo "- tailscale-${{ matrix.arch }}.exe" >> $GITHUB_STEP_SUMMARY
+          echo "- tailscaled-${{ matrix.arch }}.exe" >> $GITHUB_STEP_SUMMARY
+          
