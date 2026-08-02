@@ -1043,3 +1043,29 @@ func (rm *RouteManager) publish(out *bart.Table[*PeerRoute], outChanged bool,
 		res.OSRoutes = osr
 	}
 }
+
+// isLinkLocal reports whether pfx's address is a link-local address.
+func isLinkLocal(pfx netip.Prefix) bool {
+	return pfx.Addr().IsLinkLocalUnicast()
+}
+
+// isLocalPrefix reports whether the prefix should be considered local to
+// this host (not a remote peer prefix) for the purposes of tests and
+// certain routing decisions. We conservatively classify single-IP
+// prefixes that are Tailscale ULA, link-local, or loopback as local.
+func (rm *RouteManager) isLocalPrefix(pfx netip.Prefix) bool {
+	if !pfx.IsSingleIP() {
+		return false
+	}
+	a := pfx.Addr()
+	if a.IsLoopback() {
+		return true
+	}
+	if isLinkLocal(pfx) {
+		return true
+	}
+	if tsaddr.IsTailscaleIP(a) {
+		return true
+	}
+	return false
+}
