@@ -58,4 +58,4 @@ jobs:
       - name: 编译失败时的提示（不影响整体状态）
         if: steps.build.outputs.build_success != 'true'
         shell: bash
-        run: echo "编译失败（策略: ${{ matrix.strategy }}），未上传产物，继续执行..."
+        run: echo "编译失败"
