@@ -1,0 +1,61 @@
+name: Build PR on Windows (ours & theirs)
+
+on:
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: '请输入要尝试合并的 PR 编号'
+        required: true
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        strategy: [ours, theirs]   # 两种策略并行运行
+      fail-fast: false             # 其中一个失败不影响另一个
+
+    runs-on: windows-latest        # 直接使用 Windows 环境进行本机编译
+
+    steps:
+      - name: 检出 Tailscale 最新代码（完整历史）
+        uses: actions/checkout@v4
+        with:
+          repository: tailscale/tailscale
+          fetch-depth: 0
+
+      - name: 获取并合并 PR（使用 ${{ matrix.strategy }} 策略）
+        shell: bash
+        run: |
+          git checkout main
+          git pull origin main
+          git fetch origin pull/${{ github.event.inputs.pr_number }}/head:pr-branch
+          # 冲突时自动采用指定策略，若有冲突会输出提示但命令不会失败（因为加了 || echo）
+          git merge pr-branch -X ${{ matrix.strategy }} --no-edit --allow-unrelated-histories || echo "Merge completed with conflicts resolved by ${{ matrix.strategy }}"
+
+      - name: 安装 Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.5'   # 可根据 Tailscale 当前要求调整
+
+      - name: 编译 Tailscale（Windows 可执行文件）
+        id: build
+        continue-on-error: true   # 即使编译失败也继续后续步骤，不中断 job
+        shell: bash
+        run: |
+          go build -v -o tailscale.exe ./cmd/tailscale
+          go build -v -o tailscaled.exe ./cmd/tailscaled
+          echo "build_success=true" >> $GITHUB_OUTPUT
+
+      - name: 上传编译产物（仅在成功时）
+        if: steps.build.outputs.build_success == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: tailscale-windows-${{ matrix.strategy }}-pr-${{ github.event.inputs.pr_number }}
+          path: |
+            tailscale.exe
+            tailscaled.exe
+
+      - name: 编译失败时的提示（不影响整体状态）
+        if: steps.build.outputs.build_success != 'true'
+        shell: bash
+        run: echo "⚠️ 编译失败（策略: ${{ matrix.strategy }}），未上传产物，继续执行..."
